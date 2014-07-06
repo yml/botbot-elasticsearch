@@ -22,7 +22,7 @@ func NewElasticsearch(addr, esIndex, esType string) *Elasticsearch {
 }
 
 func (es *Elasticsearch) newRequest(method string, body io.Reader) (*http.Request, error) {
-	urlStr := fmt.Sprintf("http://%s/%s/%s/1", es.addr, es.esIndex, es.esType)
+	urlStr := fmt.Sprintf("http://%s/%s/%s", es.addr, es.esIndex, es.esType)
 	glog.V(3).Infoln("URL string used to build the request to elasticsearch:", urlStr)
 	req, err := http.NewRequest(method, urlStr, body)
 	if err != nil {
@@ -41,7 +41,7 @@ func (es *Elasticsearch) Do(method string, v interface{}) (*http.Response, error
 	}
 	glog.V(3).Infoln("json:", string(b))
 
-	req, err := es.newRequest("PUT", bytes.NewReader(b))
+	req, err := es.newRequest(method, bytes.NewReader(b))
 	if err != nil {
 		glog.Errorln("An error occured while bulding elasticsearch request:", err)
 		return nil, err
@@ -51,7 +51,7 @@ func (es *Elasticsearch) Do(method string, v interface{}) (*http.Response, error
 }
 
 func (es *Elasticsearch) Index(v interface{}) (body []byte, err error) {
-	resp, err := es.Do("PUT", v)
+	resp, err := es.Do("POST", v)
 	if err != nil {
 		glog.Errorln("An error occured while doing the request to elasticsearch:", err)
 		return nil, err

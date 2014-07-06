@@ -19,19 +19,20 @@ func SetGlogFlags() {
 }
 
 func mockElasticsearchServer(t *testing.T) *httptest.Server {
-	expectedURL := "/botbot/line/1"
+	expectedURL := "/botbot/line"
 	expectedBody := `{"Text":"hello world","Nick":"yml"}`
+	result := `{"_index":"botbot","_type":"line","_id":"B8K2BW9yRkWPEkD48gKmrg","_version":1,"created":true}`
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.String() != expectedURL {
 			t.Error("Expected", expectedURL, "received", r.URL)
 		}
 		body, _ := ioutil.ReadAll(r.Body)
 		if string(body) != expectedBody {
-			t.Error("Expected", expectedBody, "received", body)
+			t.Error("Expected", expectedBody, "received", string(body))
 		}
 		glog.Infoln("[Test] Body received", string(body))
 		glog.Infoln("[Test] r.URL", r.URL)
-		fmt.Fprintln(w, `{"_index":"botbot","_type":"line","_id":"1","_version":1,"created":true}`)
+		fmt.Fprintln(w, result)
 	}))
 	return ts
 }
