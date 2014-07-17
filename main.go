@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -20,7 +21,12 @@ const (
 	esType  = "line"
 )
 
-func listen(wg sync.WaitGroup, queue common.Queue, quit chan struct{}) chan line.Line {
+type Context struct {
+	Storage *Elasticsearch
+	Queue   common.Queue
+}
+
+func listen(wg sync.WaitGroup, ctx *Context, quit chan struct{}) chan line.Line {
 
 	lines := make(chan line.Line)
 	go func(lines chan line.Line, wg sync.WaitGroup) {
@@ -33,7 +39,7 @@ func listen(wg sync.WaitGroup, queue common.Queue, quit chan struct{}) chan line
 				return
 			default:
 				// Blocking on lpop for 5 s
-				_, val, err := queue.Blpop([]string{"q"}, 5)
+				_, val, err := ctx.Queue.Blpop([]string{"q"}, 5)
 				if err != nil {
 					glog.Errorln("An error occured while blpop on 'q'", err)
 				}
@@ -53,18 +59,19 @@ func listen(wg sync.WaitGroup, queue common.Queue, quit chan struct{}) chan line
 	return lines
 }
 
-func EsStore(l line.Line) {
-	es := NewElasticsearch(esAddr, esIndex, esType)
-	es.Index(&l)
+func EsStore(l line.Line, ctx *Context) {
+	ctx.Storage.Index(&l)
 }
 
-func Ping(l line.Line) {
-	if strings.Contains(l.Content, "ping") {
-		glog.Infoln("Pong")
+func Ping(l line.Line, ctx *Context) {
+	if strings.EqualFold(l.Content, l.BotNick+": ping") {
+		// TODO the python version does an Lpush
+		ctx.Queue.Lpush("bot",
+			[]byte("WRITE "+strconv.Itoa(l.ChatBotId)+" "+l.Channel+" Are you in need of my services, "+l.User+" ?"))
 	}
 }
 
-func Debug(l line.Line) {
+func Debug(l line.Line, ctx *Context) {
 	glog.V(3).Infoln("[Debug] line.Command", l.Command, "line.Content", l.Content)
 }
 
@@ -80,16 +87,19 @@ func main() {
 	// listen for syscall to cleanly terminate goroutine
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	plugins := []func(line.Line){EsStore, Ping, Debug}
-	queue := common.NewRedisQueue()
+	plugins := []func(line.Line, *Context){EsStore, Ping, Debug}
+	context := &Context{
+		Storage: NewElasticsearch(esAddr, esIndex, esType),
+		Queue:   common.NewRedisQueue(),
+	}
 
-	lines := listen(wg, queue, quit)
+	lines := listen(wg, context, quit)
 	condition := true
 	for condition {
 		select {
 		case l := <-lines:
 			for _, p := range plugins {
-				p(l)
+				p(l, context)
 			}
 		case <-sigs:
 			glog.Infoln("Closting botbot-elasticsearch")
